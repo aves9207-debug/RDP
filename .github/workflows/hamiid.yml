@@ -1,35 +1,26 @@
-name: Windows RDP Optimized
-on: workflow_dispatch
+         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+             -Name "SecurityLayer" -Value 0 -Force
 
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
+          # Firewall rule cleanup + add rule
+          # Firewall rule cleanup + add RDP rule
+         netsh advfirewall firewall delete rule name="RDP-Tailscale"
+         netsh advfirewall firewall add rule name="RDP-Tailscale" `
+             dir=in action=allow protocol=TCP localport=3389
+@@ -33,7 +33,7 @@ jobs:
+     - name: Create RDP User with Fixed Password
+shell: powershell
+run: |
+          $password = "hamid1212"
+          $password = "hamid1212@"
+         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-      # ============================================================
-      # 1. CREATE USER + ENABLE RDP
-      # ============================================================
-      - name: Enable RDP + Create User
-        shell: powershell
-        run: |
+         if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+@@ -67,7 +67,7 @@ jobs:
+             --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+             --hostname=gh-runner-$env:GITHUB_RUN_ID
 
-          # Strong password (VALID for GitHub Windows Server)
-          $password = "aves!@#masoom!@#12"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-
-          # Create or update user 'hamid'
-          if (Get-LocalUser -Name "hamid" -ErrorAction SilentlyContinue) {
-              Set-LocalUser -Name "hamid" -Password $securePass
-          } else {
-              New-LocalUser -Name "hamid" -Password $securePass -AccountNeverExpires:$true
-          }
-
-          # Add to RDP group
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "hamid"
-
-          # Enable RDP globally
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\' `
-            -Name "fDenyTSConnections" -Value 0
-
-          # Fix for GitHub RDP compatibility
-          Set-ItemProperty `
+          # Wait for IP
+          # Wait for Tailscale IP
+         $tsIP = $null
+         for ($i=0; $i -lt 10 -and -not $tsIP; $i++) {
+             $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
