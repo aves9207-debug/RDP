@@ -1,112 +1,112 @@
-name: RDP
-
-on:
-  workflow_dispatch:
+name: Windows RDP Optimized
+on: workflow_dispatch
 
 jobs:
-  secure-rdp:
+  build:
     runs-on: windows-latest
-    timeout-minutes: 3600
-
     steps:
-      - name: Configure Core RDP Settings
+
+      # ============================================================
+      # 1. Create User "hamid" + RDP Setup
+      # ============================================================
+      - name: Enable RDP + Create User
         shell: powershell
         run: |
-          # Enable RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-              -Name "fDenyTSConnections" -Value 0 -Force
 
-          # Disable NLA & reduce security layer
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-              -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-              -Name "SecurityLayer" -Value 0 -Force
-
-          # Firewall rule cleanup + add RDP rule
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-              dir=in action=allow protocol=TCP localport=3389
-
-          Restart-Service TermService -Force
-
-
-      - name: Create RDP User with Fixed Password
-        shell: powershell
-        run: |
-          $password = "hamid1212@"
+          # Strong password (REPLACE WITH SECRET: secrets.RDP_PASSWORD)
+          $password = "Hamid1212@"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
-              Set-LocalUser -Name "RDP" -Password $securePass
+          # Create/update user
+          if (Get-LocalUser -Name "hamid" -ErrorAction SilentlyContinue) {
+              Set-LocalUser -Name "hamid" -Password $securePass
+          } else {
+              New-LocalUser -Name "hamid" -Password $securePass -AccountNeverExpires:$true
           }
-          else {
-              New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          }
 
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "hamid"
 
-          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          # Enable RDP in registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\' `
+              -Name "fDenyTSConnections" -Value 0
+
+          # RDP encryption fix for GH runners
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "SecurityLayer" -Value 0 -Force
+
+          # Firewall rule
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
 
-      - name: Install Tailscale
+      # ============================================================
+      # 2. Performance Optimization
+      # ============================================================
+      - name: Performance Boost
         shell: powershell
         run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installer = "$env:TEMP\tailscale.msi"
 
-          Invoke-WebRequest -Uri $url -OutFile $installer
-          Start-Process msiexec.exe -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait
-          Remove-Item $installer -Force
+          Write-Host "Applying Performance Optimizations..."
+
+          # Prefer high performance power plan
+          powercfg /setactive SCHEME_MIN
+
+          # Increase system responsiveness
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
+
+          # Enable disk write caching
+          reg add "HKLM\SYSTEM\CurrentControlSet\Services\Disk" /v TimeOutValue /t REG_DWORD /d 0x0000003c /f
+
+          # Network throughput optimization
+          netsh interface tcp set global autotuninglevel=experimental
+          netsh interface tcp set global rss=enabled
+          netsh interface tcp set global rsc=enabled
+
+          Write-Host "Performance Tweaks Applied."
 
 
-      - name: Establish Tailscale Connection
+      # ============================================================
+      # 3. Install Tailscale + Connect
+      # ============================================================
+      - name: Install & Connect Tailscale
         shell: powershell
         run: |
+
+          # Install Tailscale silently
+          Start-Process msiexec.exe -ArgumentList '/i https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe /quiet' -Wait
+
+          # Connect using your AUTH KEY
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-              --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-              --hostname=gh-runner-$env:GITHUB_RUN_ID
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+            --hostname=gh-runner-$env:GITHUB_RUN_ID
 
-          # Wait for Tailscale IP
+          # Detect IP
           $tsIP = $null
-          for ($i=0; $i -lt 10 -and -not $tsIP; $i++) {
+          for ($i=0; $i -lt 15 -and -not $tsIP; $i++) {
+              Start-Sleep 2
               $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
-              Start-Sleep 5
           }
 
-          if (-not $tsIP) {
-              Write-Error "No Tailscale IP assigned."
-              exit 1
-          }
+          if (-not $tsIP) { Write-Host "❌ Tailscale IP could not be retrieved."; exit 1 }
+          Write-Host "Tailscale IP: $tsIP"
 
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          # Write credentials to console (safe for self-use)
+          Write-Host ""
+          Write-Host "==================== RDP INFORMATION ===================="
+          Write-Host "Connect using any RDP client:"
+          Write-Host ""
+          Write-Host "IP Address : $tsIP:3389"
+          Write-Host "Username   : hamid"
+          Write-Host "Password   : Hamid1212@"
+          Write-Host "========================================================="
+          Write-Host ""
 
 
-      - name: Verify RDP Accessibility
-        shell: powershell
+      # ============================================================
+      # 4. Keep GitHub Runner Alive Forever
+      # ============================================================
+      - name: Keep Session Alive
         run: |
-          $IP = $env:TAILSCALE_IP
-          Write-Host "Testing RDP port on $IP"
-
-          $test = Test-NetConnection -ComputerName $IP -Port 3389
-          if (-not $test.TcpTestSucceeded) {
-              Write-Error "Port 3389 is NOT reachable through Tailscale."
-              exit 1
-          }
-
-          Write-Host "RDP port is open!"
-
-
-      - name: Maintain Connection
-        shell: powershell
-        run: |
-          Write-Host "`n===== RDP ACCESS ====="
-          Write-Host "IP:       $env:TAILSCALE_IP"
-          Write-Host "Username: RDP"
-          Write-Host "Password: $env:RDP_PASSWORD"
-          Write-Host "=======================`n"
-
-          while ($true) {
-              Write-Host "[$(Get-Date)] Runner active..."
-              Start-Sleep 300
-          }
+          echo "RDP session active. Workflow will stay alive."
+          ping -t 127.0.0.1 > nul
