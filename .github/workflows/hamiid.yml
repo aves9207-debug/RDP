@@ -22,7 +22,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
               -Name "SecurityLayer" -Value 0 -Force
 
-          # Firewall rule cleanup + add rule
+          # Firewall rule cleanup + add RDP rule
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" `
               dir=in action=allow protocol=TCP localport=3389
@@ -33,7 +33,7 @@ jobs:
       - name: Create RDP User with Fixed Password
         shell: powershell
         run: |
-          $password = "hamid1212"
+          $password = "hamid1212@"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
           if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
@@ -67,7 +67,7 @@ jobs:
               --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
               --hostname=gh-runner-$env:GITHUB_RUN_ID
 
-          # Wait for IP
+          # Wait for Tailscale IP
           $tsIP = $null
           for ($i=0; $i -lt 10 -and -not $tsIP; $i++) {
               $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
