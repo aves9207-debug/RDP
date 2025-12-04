@@ -111,3 +111,24 @@ jobs:
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
           }
+- name: Create/Update RDP User
+  run: |
+    $password = "${{ secrets.RDP_PASSWORD }}"
+    $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+    # Check if user exists
+    if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+        Write-Host "User RDP already exists — updating password."
+        Set-LocalUser -Name "RDP" -Password $securePass
+    }
+    else {
+        Write-Host "Creating user RDP."
+        New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+    }
+
+    # Ensure group membership
+    Add-LocalGroupMember -Group "Administrators" -Member "RDP" -ErrorAction SilentlyContinue
+    Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP" -ErrorAction SilentlyContinue
+
+    # Export credentials for later steps
+    echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
