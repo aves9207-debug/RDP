@@ -1,26 +1,134 @@
-         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-             -Name "SecurityLayer" -Value 0 -Force
+name: RDP Access Gaming Edition
 
-          # Firewall rule cleanup + add rule
-          # Firewall rule cleanup + add RDP rule
-         netsh advfirewall firewall delete rule name="RDP-Tailscale"
-         netsh advfirewall firewall add rule name="RDP-Tailscale" `
-             dir=in action=allow protocol=TCP localport=3389
-@@ -33,7 +33,7 @@ jobs:
-     - name: Create RDP User with Fixed Password
-shell: powershell
-run: |
-          $password = "hamid1212"
-          $password = "hamid1212@"
-         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+on:
+  workflow_dispatch:
 
-         if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
-@@ -67,7 +67,7 @@ jobs:
-             --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-             --hostname=gh-runner-$env:GITHUB_RUN_ID
+jobs:
+  rdp-job:
+    runs-on: windows-latest
+    timeout-minutes: 360
 
-          # Wait for IP
-          # Wait for Tailscale IP
-         $tsIP = $null
-         for ($i=0; $i -lt 10 -and -not $tsIP; $i++) {
-             $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
+    steps:
+
+    # ------------------------------------------------------------
+    # Enable Remote Desktop
+    # ------------------------------------------------------------
+    - name: Enable RDP
+      shell: powershell
+      run: |
+        Write-Host "Enabling Remote Desktop..."
+
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+          -Name "fDenyTSConnections" -Value 0 -Force
+
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+        # Allow secure + compatible RDP layer
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+          -Name "SecurityLayer" -Value 1 -Force
+
+        Restart-Service TermService -Force
+
+    # ------------------------------------------------------------
+    # Create Secure RDP User
+    # ------------------------------------------------------------
+    - name: Create RDP User
+      shell: powershell
+      run: |
+        Write-Host "Creating RDP user with secure password..."
+
+        $password = "Hamid@121@A!"
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+        if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+          Remove-LocalUser -Name "RDP"
+        }
+
+        New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+
+        Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+
+        echo "RDP_USER=RDP" >> $env:GITHUB_ENV
+        echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
+    # ------------------------------------------------------------
+    # Install Common Tools (Chrome + 7zip)
+    # ------------------------------------------------------------
+    - name: Install Basic Tools
+      shell: powershell
+      run: |
+        winget install -e --id Google.Chrome --accept-source-agreements --accept-package-agreements
+        winget install -e --id 7zip.7zip --accept-source-agreements --accept-package-agreements
+
+    # ------------------------------------------------------------
+    # Gaming + Performance Tweaks
+    # ------------------------------------------------------------
+    - name: Apply Gaming Optimizations
+      shell: powershell
+      run: |
+        Write-Host "Applying gaming performance tweaks..."
+
+        # Enable Game Mode
+        reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1 /f
+
+        # Enable GPU hardware acceleration
+        reg add "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" /v HwSchMode /t REG_DWORD /d 2 /f
+
+        # Disable power saving
+        powercfg /setactive SCHEME_MIN
+
+        # Enable audio (important for cloud gaming)
+        Set-Service Audiosrv -StartupType Automatic
+        Start-Service Audiosrv
+
+        # Uncap CPU performance
+        powercfg -setacvalueindex SCHEME_MIN SUB_PROCESSOR PROCTHROTTLEMAX 100
+        powercfg -setacvalueindex SCHEME_MIN SUB_PROCESSOR PROCTHROTTLEMIN 100
+        powercfg -setactive SCHEME_MIN
+
+    # ------------------------------------------------------------
+    # Install Tailscale
+    # ------------------------------------------------------------
+    - name: Install Tailscale
+      shell: powershell
+      run: |
+        Write-Host "Installing Tailscale..."
+        $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+        $installer = "$env:TEMP\tailscale.msi"
+        Invoke-WebRequest -Uri $url -OutFile $installer
+        Start-Process msiexec.exe -ArgumentList "/i `"$installer`" /qn /norestart" -Wait
+
+    # ------------------------------------------------------------
+    # Connect Tailscale
+    # ------------------------------------------------------------
+    - name: Connect Tailscale
+      shell: powershell
+      run: |
+        $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+
+        & $ts up `
+          --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+          --hostname=gh-runner-${{ github.run_id }} `
+          --accept-routes `
+          --accept-dns `
+          --reset
+
+        $ip = & $ts ip -4
+        echo "TS_IP=$ip" >> $env:GITHUB_ENV
+
+    # ------------------------------------------------------------
+    # Show Connection Info
+    # ------------------------------------------------------------
+    - name: Show Connection Info
+      shell: powershell
+      run: |
+        Write-Host "`n======================================="
+        Write-Host "       🎮 GAMING RDP READY"
+        Write-Host "---------------------------------------"
+        Write-Host "🌐 Tailscale IP:  $env:TS_IP"
+        Write-Host "👤 Username:       $env:RDP_USER"
+        Write-Host "🔐 Password:       $env:RDP_PASS"
+        Write-Host "=======================================`n"
+
+    # ---------------------------------------------------
