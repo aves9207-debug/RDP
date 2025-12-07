@@ -6,11 +6,51 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
+      - name: Free Up Disk Space
+        run: |
+          Write-Host "Disk space before cleanup:"
+          Get-PSDrive C | Select-Object Used,Free
+          
+          # Remove unnecessary software
+          Write-Host "`nRemoving unnecessary software..."
+          
+          # Remove Android SDK
+          if (Test-Path "C:\Android") {
+            Remove-Item -Path "C:\Android" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          
+          # Remove CodeQL
+          if (Test-Path "C:\hostedtoolcache\CodeQL") {
+            Remove-Item -Path "C:\hostedtoolcache\CodeQL" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          
+          # Remove large tool caches
+          if (Test-Path "C:\hostedtoolcache\go") {
+            Remove-Item -Path "C:\hostedtoolcache\go" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          
+          if (Test-Path "C:\hostedtoolcache\Python") {
+            Get-ChildItem "C:\hostedtoolcache\Python" | Where-Object { $_.Name -notlike "*3.12*" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          
+          # Clear temp files
+          Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+          
+          # Clean Windows Update cache
+          Stop-Service wuauserv -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Start-Service wuauserv -ErrorAction SilentlyContinue
+          
+          Write-Host "`nDisk space after cleanup:"
+          Get-PSDrive C | Select-Object Used,Free
+          
       - name: Enable RDP
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Restart-Service -Name TermService -Force
+          
       - name: Create RDP User
         run: |
           $password = "hamid12@"
@@ -20,17 +60,20 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_USER=RDP" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          
       - name: Install Tailscale
         run: |
           $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
           $out = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest -Uri $url -OutFile $out
           Start-Process msiexec.exe -ArgumentList "/i $out /quiet /norestart" -Wait
+          
       - name: Connect Tailscale
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TS_IP=$ip" >> $env:GITHUB_ENV
+          
       - name: Show Connection Info
         run: |
           Write-Host "`n============================"
@@ -38,7 +81,16 @@ jobs:
           Write-Host "IP Address (Tailscale): $env:TS_IP"
           Write-Host "Username: $env:RDP_USER"
           Write-Host "Password: $env:RDP_PASS"
+          Write-Host "`n📊 Disk Space Available:"
+          $disk = Get-PSDrive C
+          $freeGB = [math]::Round($disk.Free / 1GB, 2)
+          $usedGB = [math]::Round($disk.Used / 1GB, 2)
+          $totalGB = [math]::Round(($disk.Free + $disk.Used) / 1GB, 2)
+          Write-Host "Total: $totalGB GB"
+          Write-Host "Used: $usedGB GB"
+          Write-Host "Free: $freeGB GB"
           Write-Host "============================`n"
+          
       - name: Keep Alive
         run: |
           while ($true) {
