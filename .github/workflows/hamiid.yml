@@ -10,20 +10,20 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # FREE DISK SPACE CLEANUP
+      # FREE UP DISK SPACE
       # ------------------------------------------------------------
       - name: Free Up Disk Space
         shell: powershell
         run: |
-          Write-Host "Disk Before:"
-          Get-PSDrive C | Select Used,Free
+          Write-Host "Disk Before Cleanup:"
+          Get-PSDrive C | Select-Object Used, Free
 
           if (Test-Path "C:\Android") {
-            Remove-Item "C:\Android" -Recurse -Force
+            Remove-Item -Path "C:\Android" -Recurse -Force
           }
 
           if (Test-Path "C:\hostedtoolcache\CodeQL") {
-            Remove-Item "C:\hostedtoolcache\CodeQL" -Recurse -Force
+            Remove-Item -Path "C:\hostedtoolcache\CodeQL" -Recurse -Force
           }
 
           if (Test-Path "C:\hostedtoolcache\Python") {
@@ -31,6 +31,4 @@ jobs:
           }
 
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-          Stop-Service wuauserv -Force -ErrorAction
+          Remove-Item "
