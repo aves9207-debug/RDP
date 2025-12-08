@@ -1,64 +1,71 @@
-    - name: Install RPCS3 + Full Optimizations + Vulkan Speed Hack
+name: Gaming-RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp-server:
+    runs-on: windows-2022
+    timeout-minutes: 360
+
+    steps:
+
+    - name: Create RDP User
+      shell: powershell
       run: |
-        Write-Host "[+] Installing RPCS3..."
+        $password = "Hamid@12@"
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        New-LocalUser -Name "gaming" -Password $securePass -AccountNeverExpires -PasswordNeverExpires
+        Add-LocalGroupMember -Group "Administrators" -Member "gaming"
 
-        # Download RPCS3
-        Invoke-WebRequest "https://github.com/RPCS3/rpcs3-binaries-win/releases/latest/download/rpcs3-windows-x64.zip" -OutFile "rpcs3.zip"
-        Expand-Archive "rpcs3.zip" -DestinationPath "C:\RPCS3" -Force
+    - name: Enable RDP + Disable NLA
+      shell: powershell
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+          -Name "fDenyTSConnections" -Value 0 -Force
 
-        # Install VC++ runtime
-        Write-Host "[+] Installing VC++ Runtime..."
-        Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc.exe"
-        Start-Process "vc.exe" -ArgumentList "/install /quiet /norestart" -Wait
+        # Disable NLA
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+          -Name "UserAuthentication" -Value 0 -Force
 
-        # RPCS3 config directory
-        $configPath = "C:\Users\Gamer\AppData\Roaming\rpcs3"
-        New-Item -ItemType Directory -Path $configPath -Force | Out-Null
+        # Enable RDP firewall
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-        Write-Host "[+] Applying RPCS3 performance config..."
+    - name: Apply Gaming Performance Tweaks (Fixes Your Error)
+      shell: powershell
+      run: |
+        # Create required RDP registry folders (fixes path error)
+        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP" -Force | Out-Null
+        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" -Force | Out-Null
 
-        @"
-Version: 1
-PPU Decoder: "LLVM Recompiler"
-SPU Decoder: "LLVM Recompiler"
-SPU Lower Thread Priority: true
-Renderer: "Vulkan"
-Resolution Scale: 50
-Thread Scheduler: true
-Low Memory Mode: true
-Write Debug Logs: false
-Write TTY: false
+        # Max image quality
+        New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+          -Name "EnableLossless" -Value 1 -PropertyType DWORD -Force
 
-# Vulkan Speed Hack for WARP
-Disable Vulkan Shader Validation: true
-Disable FIFO Reordering: true
-Asynchronous Shader Compiler: true
-Driver Recovery Timeout: false
-Force FIFO Accurate RSX: false
-Disable ZCull Occlusion Queries: true
-Disable Vertex Cache: false
-Accurate SPU DMA: false
-Accurate RSX reservation access: false
-Accurate Memory Access: false
-Accurate Shader Status Updates: false
-Accurate Color and Depth: false
-Skip Duplicate Render Targets: true
-Prefer Linked SPU Threads: false
-"@ | Out-File -Encoding utf8 "$configPath\config.yml"
+        New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+          -Name "MinCompression" -Value 0 -PropertyType DWORD -Force
 
-        Write-Host "[+] Applying Vulkan WARP registry tweaks..."
+        New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+          -Name "MaxCompression" -Value 0 -PropertyType DWORD -Force
 
-        # Makes WARP faster + lower precision math
-        reg add "HKLM\SOFTWARE\Microsoft\Direct3D\Drivers" /v WARPSoftwareDevice /t REG_DWORD /d 1 /f
-        reg add "HKLM\SOFTWARE\Microsoft\Direct3D" /v AllowLowPrecisionMath /t REG_DWORD /d 1 /f
-        reg add "HKLM\SOFTWARE\Microsoft\Direct3D" /v WarpFastMath /t REG_DWORD /d 1 /f
+        # Unlock GPU WARP (best possible on GitHub servers)
+        Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows' `
+          -Name "EnableWARP" -Value 1 -Force
 
-        # Improve Vulkan pipeline performance
-        reg add "HKLM\SOFTWARE\Khronos\Vulkan\ImplicitLayers" /f
-
-        # Boost system for emulator
-        Write-Host "[+] Boosting system thread priority..."
+        # Ultimate performance mode
+        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f
 
-        Write-Host "[+] RPCS3 + Vulkan Speed Hack DONE"
+    - name: Show RDP Info
+      shell: powershell
+      run: |
+        Write-Host " "
+        Write-Host "==============================="
+        Write-Host "        RDP READY!"
+        Write-Host "==============================="
+        Write-Host "Username: gaming"
+        Write-Host "Password: Hamid@12@"
+        Write-Host "Use this IP in Remote Desktop:"
+        ipconfig
+        Write-Host "==============================="
+        Write-Host " "
