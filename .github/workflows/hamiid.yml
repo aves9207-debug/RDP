@@ -1,56 +1,64 @@
-name: Gaming RDP
-on:
-  workflow_dispatch:
-
-jobs:
-  gaming-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 360
-
-    steps:
-    - name: Performance Tweaks
+    - name: Install RPCS3 + Full Optimizations + Vulkan Speed Hack
       run: |
-        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+        Write-Host "[+] Installing RPCS3..."
+
+        # Download RPCS3
+        Invoke-WebRequest "https://github.com/RPCS3/rpcs3-binaries-win/releases/latest/download/rpcs3-windows-x64.zip" -OutFile "rpcs3.zip"
+        Expand-Archive "rpcs3.zip" -DestinationPath "C:\RPCS3" -Force
+
+        # Install VC++ runtime
+        Write-Host "[+] Installing VC++ Runtime..."
+        Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc.exe"
+        Start-Process "vc.exe" -ArgumentList "/install /quiet /norestart" -Wait
+
+        # RPCS3 config directory
+        $configPath = "C:\Users\Gamer\AppData\Roaming\rpcs3"
+        New-Item -ItemType Directory -Path $configPath -Force | Out-Null
+
+        Write-Host "[+] Applying RPCS3 performance config..."
+
+        @"
+Version: 1
+PPU Decoder: "LLVM Recompiler"
+SPU Decoder: "LLVM Recompiler"
+SPU Lower Thread Priority: true
+Renderer: "Vulkan"
+Resolution Scale: 50
+Thread Scheduler: true
+Low Memory Mode: true
+Write Debug Logs: false
+Write TTY: false
+
+# Vulkan Speed Hack for WARP
+Disable Vulkan Shader Validation: true
+Disable FIFO Reordering: true
+Asynchronous Shader Compiler: true
+Driver Recovery Timeout: false
+Force FIFO Accurate RSX: false
+Disable ZCull Occlusion Queries: true
+Disable Vertex Cache: false
+Accurate SPU DMA: false
+Accurate RSX reservation access: false
+Accurate Memory Access: false
+Accurate Shader Status Updates: false
+Accurate Color and Depth: false
+Skip Duplicate Render Targets: true
+Prefer Linked SPU Threads: false
+"@ | Out-File -Encoding utf8 "$configPath\config.yml"
+
+        Write-Host "[+] Applying Vulkan WARP registry tweaks..."
+
+        # Makes WARP faster + lower precision math
+        reg add "HKLM\SOFTWARE\Microsoft\Direct3D\Drivers" /v WARPSoftwareDevice /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\Microsoft\Direct3D" /v AllowLowPrecisionMath /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\Microsoft\Direct3D" /v WarpFastMath /t REG_DWORD /d 1 /f
+
+        # Improve Vulkan pipeline performance
+        reg add "HKLM\SOFTWARE\Khronos\Vulkan\ImplicitLayers" /f
+
+        # Boost system for emulator
+        Write-Host "[+] Boosting system thread priority..."
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012078010000000 /f
+        reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 38 /f
 
-    - name: Enable RDP
-      run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Restart-Service TermService -Force
-
-    - name: Create RDP User
-      run: |
-        $password = "Hamid@12345"
-        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-        New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer"
-        echo "PASS=$password" >> $env:GITHUB_ENV
-
-    - name: Install Tailscale
-      run: |
-        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
-
-    - name: Connect Tailscale
-      run: |
-        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=Gaming-RDP
-        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-        echo "TSIP=$ip" >> $env:GITHUB_ENV
-
-    - name: Show Info
-      run: |
-        Write-Host "===================="
-        Write-Host "Tailscale IP: $env:TSIP"
-        Write-Host "RDP User: Gamer"
-        Write-Host "RDP Pass: $env:PASS"
-        Write-Host "===================="
-
-    - name: Keep Alive
-      run: |
-        while ($true) {
-          Write-Host "RDP Running..."
-          Start-Sleep -Seconds 300
-        }
+        Write-Host "[+] RPCS3 + Vulkan Speed Hack DONE"
