@@ -9,151 +9,75 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    # ----------------------------
-    # FREE DISK SPACE
-    # ----------------------------
-    - name: Free Up Disk Space
-      shell: powershell
-      run: |
-        Write-Host "Disk Before Cleanup:"
-        Get-PSDrive C | Select Used,Free
+      - name: Create RDP User
+        shell: powershell
+        run: |
+          $password = "Hamid@1212" | ConvertTo-SecureString -AsPlainText -Force
+          New-LocalUser -Name "Hamid" -Password $password -AccountNeverExpires:$true
+          Add-LocalGroupMember -Group "Administrators" -Member "Hamid"
 
-        # Remove Android SDK
-        if (Test-Path "C:\Android") {
-          Remove-Item "C:\Android" -Recurse -Force -ErrorAction SilentlyContinue
-        }
+      - name: Enable RDP
+        shell: powershell
+        run: |
+          # Enable RDP service
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
 
-        # Remove CodeQL
-        if (Test-Path "C:\hostedtoolcache\CodeQL") {
-          Remove-Item "C:\hostedtoolcache\CodeQL" -Recurse -Force -ErrorAction SilentlyContinue
-        }
+          # Allow RDP through firewall
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-        # Remove old Python versions
-        if (Test-Path "C:\hostedtoolcache\Python") {
-          Get-ChildItem "C:\hostedtoolcache\Python" | Where-Object { $_.Name -notlike "*3.12*" } | 
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        }
+          # Enable RDP service
+          Set-Service -Name TermService -StartupType Automatic
 
-        # Clear temp
-        Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+      - name: Disable NLA & Apply RDP Tweaks (No Errors)
+        shell: powershell
+        run: |
+          # Disable NLA
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
+                           -Name "UserAuthentication" -Value 0 -Force
 
-        # Clean Windows Update cache
-        Stop-Service wuauserv -Force -ErrorAction SilentlyContinue
-        Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force
-        Start-Service wuauserv -ErrorAction SilentlyContinue
+          # Create missing registry paths
+          if (-Not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP")) {
+              New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP" -Force | Out-Null
+          }
 
-        Write-Host "`nDisk After Cleanup:"
-        Get-PSDrive C | Select Used,Free
+          if (-Not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality")) {
+              New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" -Force | Out-Null
+          }
 
+          # High quality RDP settings
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+                           -Name "EnableLossless" -Value 1 -PropertyType DWORD -Force
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+                           -Name "MinCompression" -Value 0 -PropertyType DWORD -Force
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
+                           -Name "MaxCompression" -Value 0 -PropertyType DWORD -Force
 
-    # ----------------------------
-    # ENABLE RDP
-    # ----------------------------
-    - name: Enable RDP
-      shell: powershell
-      run: |
-        Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" "fDenyTSConnections" 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Restart-Service TermService -Force
+      - name: GPU Optimization (Better for gaming & emulators)
+        shell: powershell
+        run: |
+          # Enable GPU scheduling
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Scheduler" `
+                           -Name "EnableGpuScheduling" -Value 2 -Type DWord -Force
 
+          # Improve DirectX rendering
+          Set-ItemProperty -Path "HKLM:\Software\Microsoft\DirectX" `
+                           -Name "MaxFrameLatency" -Value 1 -Type DWord -Force
 
-    # ----------------------------
-    # CREATE USER
-    # ----------------------------
-    - name: Create RDP User
-      shell: powershell
-      run: |
-        $password = "hamid12@"
-        $secure = ConvertTo-SecureString $password -AsPlainText -Force
-        New-LocalUser -Name "RDP" -Password $secure -AccountNeverExpires
-        Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          # RemoteFX improvements
+          Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows NT\Terminal Services" `
+                           -Name "UseAdvancedRemoteFXCodec" -Value 1 -Type DWord -Force
 
-        echo "RDP_USER=RDP" >> $env:GITHUB_ENV
-        echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+      - name: Start RDP Session Output
+        shell: powershell
+        run: |
+          Write-Host "========================================"
+          Write-Host "RDP is ready!"
+          Write-Host "Username: Hamid"
+          Write-Host "Password: Hamid@1212"
+          Write-Host "Connect using Windows Remote Desktop."
+          Write-Host "========================================"
 
-
-    # ----------------------------
-    # FIXED: DISABLE NLA + RDP PERFORMANCE TWEAKS
-    # (ALL IN ONE STEP → NO ERRORS)
-    # ----------------------------
-    - name: Disable NLA & Apply RDP Tweaks (Fixed)
-      shell: powershell
-      run: |
-        # Disable NLA
-        Set-ItemProperty `
-          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
-          -Name "UserAuthentication" `
-          -Value 0 -Force
-
-        # Create registry path (FIXES ERROR)
-        if (-Not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP")) {
-          New-Item "HKLM:\SYSTEM\CurrentControlSet\Control\RDP" -Force | Out-Null
-        }
-
-        if (-Not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality")) {
-          New-Item "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" -Force | Out-Null
-        }
-
-        # Apply RDP Quality Tweaks
-        New-ItemProperty `
-          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
-          -Name "EnableLossless" -Value 1 -PropertyType DWORD -Force
-
-        New-ItemProperty `
-          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
-          -Name "MinCompression" -Value 0 -PropertyType DWORD -Force
-
-        New-ItemProperty `
-          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\RDP\SessionImageQuality" `
-          -Name "MaxCompression" -Value 0 -PropertyType DWORD -Force
-
-
-    # ----------------------------
-    # INSTALL TAILSCALE
-    # ----------------------------
-    - name: Install Tailscale
-      shell: powershell
-      run: |
-        $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-        $out = "$env:TEMP\tailscale.msi"
-        Invoke-WebRequest $url -OutFile $out
-        Start-Process msiexec.exe -ArgumentList "/i $out /quiet /norestart" -Wait
-
-
-    # ----------------------------
-    # CONNECT TAILSCALE
-    # ----------------------------
-    - name: Connect Tailscale
-      shell: powershell
-      run: |
-        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
-        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-        echo "TS_IP=$ip" >> $env:GITHUB_ENV
-
-
-    # ----------------------------
-    # SHOW INFO
-    # ----------------------------
-    - name: Show Connection Info
-      shell: powershell
-      run: |
-        Write-Host "`n=========================="
-        Write-Host "RDP Ready!"
-        Write-Host "IP: $env:TS_IP"
-        Write-Host "User: $env:RDP_USER"
-        Write-Host "Pass: $env:RDP_PASS"
-        Write-Host "==========================`n"
-
-
-    # ----------------------------
-    # KEEP ALIVE
-    # ----------------------------
-    - name: Keep Alive
-      shell: powershell
-      run: |
-        while ($true) {
-          Write-Host "[$(Get-Date)] Running..."
-          Start-Sleep -Seconds 300
-        }
+      - name: Keep Session Alive
+        shell: powershell
+        run: |
+          while ($true) { Start-Sleep -Seconds 300 }
