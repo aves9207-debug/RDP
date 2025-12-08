@@ -1,34 +1,56 @@
-name: RDP
-
+name: Gaming RDP
 on:
   workflow_dispatch:
 
 jobs:
-  rdp-job:
+  gaming-rdp:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      # ------------------------------------------------------------
-      # FREE UP DISK SPACE
-      # ------------------------------------------------------------
-      - name: Free Up Disk Space
-        shell: powershell
-        run: |
-          Write-Host "Disk Before Cleanup:"
-          Get-PSDrive C | Select-Object Used, Free
+    - name: Performance Tweaks
+      run: |
+        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+        powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+        reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012078010000000 /f
 
-          if (Test-Path "C:\Android") {
-            Remove-Item -Path "C:\Android" -Recurse -Force
-          }
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Restart-Service TermService -Force
 
-          if (Test-Path "C:\hostedtoolcache\CodeQL") {
-            Remove-Item -Path "C:\hostedtoolcache\CodeQL" -Recurse -Force
-          }
+    - name: Create RDP User
+      run: |
+        $password = "Hamid@12345"
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
+        Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer"
+        echo "PASS=$password" >> $env:GITHUB_ENV
 
-          if (Test-Path "C:\hostedtoolcache\Python") {
-            Get-ChildItem "C:\hostedtoolcache\Python" | Where-Object { $_.Name -notlike "*3.12*" } | Remove-Item -Recurse -Force
-          }
+    - name: Install Tailscale
+      run: |
+        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
+        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
 
-          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "
+    - name: Connect Tailscale
+      run: |
+        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=Gaming-RDP
+        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+        echo "TSIP=$ip" >> $env:GITHUB_ENV
+
+    - name: Show Info
+      run: |
+        Write-Host "===================="
+        Write-Host "Tailscale IP: $env:TSIP"
+        Write-Host "RDP User: Gamer"
+        Write-Host "RDP Pass: $env:PASS"
+        Write-Host "===================="
+
+    - name: Keep Alive
+      run: |
+        while ($true) {
+          Write-Host "RDP Running..."
+          Start-Sleep -Seconds 300
+        }
