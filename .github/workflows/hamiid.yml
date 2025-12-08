@@ -8,69 +8,49 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Disk Cleanup + Performance Tweaks
+    - name: Performance Tweaks
       run: |
-        Write-Host "[+] Cleaning disk..."
-
-        # Delete temp + big tool caches
-        Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "C:\hostedtoolcache\go" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "C:\Android" -Recurse -Force -ErrorAction SilentlyContinue
-        
-        # Ultimate Performance mode
-        Write-Host "[+] Setting Ultimate Performance..."
         powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-
-        # Disable animations (BIG FPS BOOST OVER RDP)
-        Write-Host "[+] Disabling UI animations..."
         reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012078010000000 /f
-
-        # Reduce input lag
-        reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 0xffffffff /f
-
-        # Make WARP (software GPU) unlimited
-        reg add "HKLM\SOFTWARE\Microsoft\DirectX" /v MaxFrameLatency /t REG_DWORD /d 1 /f
-
-        # Increase TCP performance
-        netsh int tcp set global autotuninglevel=experimental
-        netsh int tcp set global rss=enabled
 
     - name: Enable RDP
       run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-          -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
 
-    - name: Create RDP Gaming User
+    - name: Create RDP User
       run: |
         $password = "Hamid@12345"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
         New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
         Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer"
-
-        echo "USER=Gamer" >> $env:GITHUB_ENV
         echo "PASS=$password" >> $env:GITHUB_ENV
 
-    - name: Show Connection Details
+    - name: Install Tailscale
       run: |
-        $ip = (Invoke-WebRequest -Uri "https://api.ipify.org").Content
-        Write-Host ""
-        Write-Host "=========================================="
-        Write-Host "  🎮 GAMING RDP READY! "
-        Write-Host "------------------------------------------"
-        Write-Host "  IP Address: $ip"
-        Write-Host "  Username : $env:USER"
-        Write-Host "  Password : $env:PASS"
-        Write-Host "=========================================="
-        Write-Host ""
+        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
+        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
+
+    - name: Connect Tailscale
+      run: |
+        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=Gaming-RDP
+        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+        echo "TSIP=$ip" >> $env:GITHUB_ENV
+
+    - name: Show Info
+      run: |
+        Write-Host "===================="
+        Write-Host "Tailscale IP: $env:TSIP"
+        Write-Host "RDP User: Gamer"
+        Write-Host "RDP Pass: $env:PASS"
+        Write-Host "===================="
 
     - name: Keep Alive
       run: |
         while ($true) {
-          Write-Host "[GAMING RDP ACTIVE] $(Get-Date)"
+          Write-Host "RDP Running..."
           Start-Sleep -Seconds 300
         }
