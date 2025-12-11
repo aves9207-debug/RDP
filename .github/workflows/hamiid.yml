@@ -1,107 +1,79 @@
-name: Gaming RDP + Ryujinx (No Powercfg)
+name: Gaming RDP
+
 on:
   workflow_dispatch:
 
 jobs:
-  rdp-gaming:
+  gaming-rdp:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-    # ----------------------------------------------------------
-    # SAFE PERFORMANCE SECTION (NO POWERCMD)
-    # ----------------------------------------------------------
-    - name: Performance Tweaks
-      shell: powershell
-      run: |
-        Write-Host "GitHub Runner blocks all powercfg changes."
-        Write-Host "Skipping power settings. System already on High Performance."
-
-    # ----------------------------------------------------------
-    # ENABLE RDP
-    # ----------------------------------------------------------
-    - name: Enable RDP
-      shell: powershell
-      run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
-          -Name "fDenyTSConnections" -Value 0 -Force
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Restart-Service TermService -Force
-
-    # ----------------------------------------------------------
-    # CREATE RDP USER
-    # ----------------------------------------------------------
+    # -------------------------------------------------------
+    # 1. Create RDP User
+    # -------------------------------------------------------
     - name: Create RDP User
       shell: powershell
       run: |
-        $password = "Hamid@12345"
-        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        $password = ConvertTo-SecureString "Hamid@12345" -AsPlainText -Force
+        New-LocalUser -Name "Gamer" -Password $password -AccountNeverExpires -PasswordNeverExpires
+        Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
+        Write-Host "User Gamer created."
 
-        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
-          New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
-        }
-
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
-
-        echo "PASS=$password" >> $env:GITHUB_ENV
-
-    # ----------------------------------------------------------
-    # INSTALL TAILSCALE
-    # ----------------------------------------------------------
-    - name: Install Tailscale
+    # -------------------------------------------------------
+    # 2. Enable RDP
+    # -------------------------------------------------------
+    - name: Enable RDP
       shell: powershell
       run: |
-        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Write-Host "RDP enabled."
 
-    - name: Connect Tailscale
+    # -------------------------------------------------------
+    # 3. Install GPU & Gaming Packages (SAFE)
+    # -------------------------------------------------------
+    - name: Install GPU Support
       shell: powershell
       run: |
-        $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
-        & $ts up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname "Ryujinx-RDP"
-        $ip = & $ts ip -4
-        echo "TSIP=$ip" >> $env:GITHUB_ENV
+        Write-Host "Installing gaming components..."
+        winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
+        winget install --id=DirectX -e --accept-source-agreements --accept-package-agreements
+        Write-Host "GPU base components installed."
 
-    # ----------------------------------------------------------
-    # INSTALL RYUJINX EMULATOR
-    # ----------------------------------------------------------
+    # -------------------------------------------------------
+    # 4. Install Ryujinx Emulator
+    # -------------------------------------------------------
     - name: Install Ryujinx
       shell: powershell
       run: |
+        Write-Host "Downloading Ryujinx..."
+
         mkdir C:\Ryujinx -Force
-        Invoke-WebRequest "https://github.com/Ryujinx/release-channel-master/releases/latest/download/ryujinx-win_x64.zip" -OutFile "ryujinx.zip"
+
+        $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
+        Invoke-WebRequest $url -OutFile "ryujinx.zip"
+
         Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
 
         mkdir C:\Switch -Force
         mkdir C:\Switch\keys -Force
         mkdir C:\Switch\games -Force
 
-        Write-Host "Upload prod.keys + title.keys -> C:\\Switch\\keys"
-        Write-Host "Upload your game NSP/XCI -> C:\\Switch\\games"
+        Write-Host "Upload prod.keys + title.keys → C:\Switch\keys"
+        Write-Host "Upload NSP/XCI games → C:\Switch\games"
 
-    # ----------------------------------------------------------
-    # SHOW INFO (CREDENTIALS + PATHS)
-    # ----------------------------------------------------------
-    - name: Show Info
+    # -------------------------------------------------------
+    # 5. Display RDP IP + Login Info
+    # -------------------------------------------------------
+    - name: Show Connection Info
       shell: powershell
       run: |
+        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
         Write-Host "==========================="
-        Write-Host "Tailscale IP: $env:TSIP"
-        Write-Host "RDP User: Gamer"
-        Write-Host "RDP Pass: $env:PASS"
-        Write-Host "Ryujinx Path: C:\\Ryujinx"
-        Write-Host "Games Folder: C:\\Switch\\games"
-        Write-Host "Keys Folder: C:\\Switch\\keys"
+        Write-Host "      RDP IS READY"
         Write-Host "==========================="
-
-    # ----------------------------------------------------------
-    # KEEP ALIVE
-    # ----------------------------------------------------------
-    - name: Keep Alive
-      shell: powershell
-      run: |
-        while ($true) {
-          Write-Host "RDP Running..."
-          Start-Sleep -Seconds 300
-        }
+        Write-Host "IP Address: $ip"
+        Write-Host "Username : Gamer"
+        Write-Host "Password : Hamid@12345"
+        Write-Host "Connect via: mstsc.exe"
