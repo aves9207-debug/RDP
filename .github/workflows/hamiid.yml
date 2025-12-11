@@ -1,4 +1,4 @@
-name: Gaming RDP + Ryujinx (Final)
+name: Gaming RDP + Ryujinx (No Powercfg)
 on:
   workflow_dispatch:
 
@@ -9,14 +9,13 @@ jobs:
 
     steps:
     # ----------------------------------------------------------
-    # PERFORMANCE MODE (NO ERRORS)
+    # SAFE PERFORMANCE SECTION (NO POWERCMD)
     # ----------------------------------------------------------
     - name: Performance Tweaks
       shell: powershell
       run: |
-        # Activate Ultimate Performance (this is safe)
-        powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        Write-Host "Ultimate Performance Mode Activated (Safe, No Errors)."
+        Write-Host "GitHub Runner blocks all powercfg changes."
+        Write-Host "Skipping power settings. System already on High Performance."
 
     # ----------------------------------------------------------
     # ENABLE RDP
@@ -82,7 +81,7 @@ jobs:
         Write-Host "Upload your game NSP/XCI -> C:\\Switch\\games"
 
     # ----------------------------------------------------------
-    # SHOW INFO (FOR YOU)
+    # SHOW INFO (CREDENTIALS + PATHS)
     # ----------------------------------------------------------
     - name: Show Info
       shell: powershell
@@ -97,7 +96,7 @@ jobs:
         Write-Host "==========================="
 
     # ----------------------------------------------------------
-    # KEEP SESSION ALIVE
+    # KEEP ALIVE
     # ----------------------------------------------------------
     - name: Keep Alive
       shell: powershell
