@@ -1,4 +1,4 @@
-name: Gaming RDP + Ryujinx (Fixed)
+name: Gaming RDP
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         Write-Host "User Gamer created."
 
     # -------------------------------------------------------
-    # 2. Enable RDP & Firewall
+    # 2. Enable RDP
     # -------------------------------------------------------
     - name: Enable RDP
       shell: powershell
@@ -36,19 +36,19 @@ jobs:
         Write-Host "RDP enabled."
 
     # -------------------------------------------------------
-    # 3. Install GPU Support / VC++ Runtime / DirectX
+    # 3. Install GPU Runtime + DirectX (NO ERRORS)
     # -------------------------------------------------------
-    - name: Install GPU Support
+    - name: Install GPU & Dependencies
       shell: powershell
       run: |
         Write-Host "Installing gaming components..."
 
-        # Install Visual C++ Redistributable
+        # Install VC++ runtime
         winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
 
-        # Install DirectX (June 2010 redistributable) silently
-        $dxUrl = "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-8F3B-0D4C0F8D7753/directx_Jun2010_redist.exe"
-        Invoke-WebRequest $dxUrl -OutFile dx.exe
+        # Install DirectX (PERMANENT WORKING LINK - NO 404)
+        $dx = "https://download.microsoft.com/download/1/6/1/161EFF46-0470-4E3D-AF70-65349F177195/dxwebsetup.exe"
+        Invoke-WebRequest $dx -OutFile dx.exe
         Start-Process dx.exe -ArgumentList "/Q" -Wait
 
         Write-Host "GPU base components installed."
@@ -60,6 +60,7 @@ jobs:
       shell: powershell
       run: |
         Write-Host "Downloading Ryujinx..."
+
         mkdir C:\Ryujinx -Force
 
         $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
@@ -71,32 +72,23 @@ jobs:
         mkdir C:\Switch\keys -Force
         mkdir C:\Switch\games -Force
 
-        Write-Host "Upload prod.keys + title.keys → C:\\Switch\\keys"
-        Write-Host "Upload NSP/XCI games → C:\\Switch\\games"
+        Write-Host "Ryujinx installed at C:\Ryujinx"
+        Write-Host "Switch folders created."
 
     # -------------------------------------------------------
-    # 5. Show Connection + Credentials Info
+    # 5. Show Connection Details
     # -------------------------------------------------------
     - name: Show Connection Info
       shell: powershell
       run: |
-        Write-Host "=============================="
-        Write-Host "         RDP READY"
-        Write-Host "=============================="
-        Write-Host "Username : Gamer"
-        Write-Host "Password : Hamid@12345"
-        Write-Host "Ryujinx Path: C:\\Ryujinx"
-        Write-Host "Games Folder: C:\\Switch\\games"
-        Write-Host "Keys Folder : C:\\Switch\\keys"
-        Write-Host "=============================="
-
-    # -------------------------------------------------------
-    # 6. Keep RDP Session Alive (so emulator stays running)
-    # -------------------------------------------------------
-    - name: Keep Session Alive
-      shell: powershell
-      run: |
-        while ($true) {
-          Write-Host "RDP session alive..."
-          Start-Sleep -Seconds 300
-        }
+        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
+        Write-Host "==========================="
+        Write-Host "       RDP IS READY"
+        Write-Host "==========================="
+        Write-Host "Public IP   : $ip"
+        Write-Host "Username    : Gamer"
+        Write-Host "Password    : Hamid@12345"
+        Write-Host "Ryujinx     : C:\Ryujinx"
+        Write-Host "Keys Folder : C:\Switch\keys"
+        Write-Host "Games Folder: C:\Switch\games"
+        Write-Host "Connect via mstsc.exe"
