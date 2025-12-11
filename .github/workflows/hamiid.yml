@@ -32,32 +32,3 @@ jobs:
       shell: powershell
       run: |
         Write-Host "Installing VC++ runtime..."
-        winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
-        Write-Host "VC++ runtime installed."
-
-    - name: Install Ryujinx Emulator
-      shell: powershell
-      run: |
-        Write-Host "Downloading Ryujinx..."
-        New-Item -ItemType Directory -Force -Path "C:\Ryujinx" | Out-Null
-        $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
-        Invoke-WebRequest $url -OutFile "ryujinx.zip"
-        Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
-        New-Item -ItemType Directory -Force -Path "C:\Switch\keys" | Out-Null
-        New-Item -ItemType Directory -Force -Path "C:\Switch\games" | Out-Null
-        Write-Host "Ryujinx installed and folders created."
-
-    - name: Show Connection Info
-      shell: powershell
-      run: |
-        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
-        Write-Host "==========================="
-        Write-Host "       RDP IS READY"
-        Write-Host "==========================="
-        Write-Host "Public IP   : $ip"
-        Write-Host "Username    : Gamer"
-        Write-Host "Password    : Hamid@12345"
-        Write-Host "Ryujinx     : C:\Ryujinx"
-        Write-Host "Keys Folder : C:\Switch\keys"
-        Write-Host "Games Folder: C:\Switch\games"
-        Write-Host "Connect via mstsc.exe"
