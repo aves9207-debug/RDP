@@ -1,56 +1,56 @@
-name: Gaming RDP
+name: Gaming RDP + Ryujinx
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-rdp:
+  rdp-gaming:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
+    # -----------------------------
+    # PERFORMANCE BOOST
+    # -----------------------------
     - name: Performance Tweaks
+      shell: powershell
       run: |
         powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012078010000000 /f
 
+    # -----------------------------
+    # ENABLE RDP
+    # -----------------------------
     - name: Enable RDP
+      shell: powershell
       run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+          -Name 'fDenyTSConnections' -Value 0 -Force
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
 
+    # -----------------------------
+    # CREATE USER
+    # -----------------------------
     - name: Create RDP User
+      shell: powershell
       run: |
         $password = "Hamid@12345"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-        New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer"
+
+        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
+          New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
+        }
+
+        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
+
         echo "PASS=$password" >> $env:GITHUB_ENV
 
+    # -----------------------------
+    # INSTALL TAILSCALE
+    # -----------------------------
     - name: Install Tailscale
+      shell: powershell
       run: |
         Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
-
-    - name: Connect Tailscale
-      run: |
-        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=Gaming-RDP
-        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-        echo "TSIP=$ip" >> $env:GITHUB_ENV
-
-    - name: Show Info
-      run: |
-        Write-Host "===================="
-        Write-Host "Tailscale IP: $env:TSIP"
-        Write-Host "RDP User: Gamer"
-        Write-Host "RDP Pass: $env:PASS"
-        Write-Host "===================="
-
-    - name: Keep Alive
-      run: |
-        while ($true) {
-          Write-Host "RDP Running..."
-          Start-Sleep -Seconds 300
-        }
+        Start-Process msiexec.exe -ArgumentList
