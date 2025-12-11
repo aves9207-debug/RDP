@@ -36,59 +36,16 @@ jobs:
         Write-Host "RDP enabled."
 
     # -------------------------------------------------------
-    # 3. Install GPU Runtime + DirectX (NO ERRORS)
+    # 3. Install VC++ Runtime ONLY (skip DirectX)
     # -------------------------------------------------------
-    - name: Install GPU & Dependencies
+    - name: Install VC++ Redistributable
       shell: powershell
       run: |
-        Write-Host "Installing gaming components..."
-
-        # Install VC++ runtime
+        Write-Host "Installing VC++ redistributable only..."
         winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
-
-        # Install DirectX (PERMANENT WORKING LINK - NO 404)
-        $dx = "https://download.microsoft.com/download/1/6/1/161EFF46-0470-4E3D-AF70-65349F177195/dxwebsetup.exe"
-        Invoke-WebRequest $dx -OutFile dx.exe
-        Start-Process dx.exe -ArgumentList "/Q" -Wait
-
-        Write-Host "GPU base components installed."
+        Write-Host "VC++ runtime installed."
 
     # -------------------------------------------------------
     # 4. Install Ryujinx Emulator
     # -------------------------------------------------------
-    - name: Install Ryujinx
-      shell: powershell
-      run: |
-        Write-Host "Downloading Ryujinx..."
-
-        mkdir C:\Ryujinx -Force
-
-        $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
-        Invoke-WebRequest $url -OutFile "ryujinx.zip"
-
-        Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
-
-        mkdir C:\Switch -Force
-        mkdir C:\Switch\keys -Force
-        mkdir C:\Switch\games -Force
-
-        Write-Host "Ryujinx installed at C:\Ryujinx"
-        Write-Host "Switch folders created."
-
-    # -------------------------------------------------------
-    # 5. Show Connection Details
-    # -------------------------------------------------------
-    - name: Show Connection Info
-      shell: powershell
-      run: |
-        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
-        Write-Host "==========================="
-        Write-Host "       RDP IS READY"
-        Write-Host "==========================="
-        Write-Host "Public IP   : $ip"
-        Write-Host "Username    : Gamer"
-        Write-Host "Password    : Hamid@12345"
-        Write-Host "Ryujinx     : C:\Ryujinx"
-        Write-Host "Keys Folder : C:\Switch\keys"
-        Write-Host "Games Folder: C:\Switch\games"
-        Write-Host "Connect via mstsc.exe"
+    - name: Install Ryuj
