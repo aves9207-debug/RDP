@@ -1,4 +1,4 @@
-name: Gaming RDP
+name: Gaming RDP + Ryujinx (Fixed)
 
 on:
   workflow_dispatch:
@@ -16,29 +16,41 @@ jobs:
       shell: powershell
       run: |
         $password = ConvertTo-SecureString "Hamid@12345" -AsPlainText -Force
-        New-LocalUser -Name "Gamer" -Password $password -AccountNeverExpires -PasswordNeverExpires
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer"
+        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
+          New-LocalUser -Name "Gamer" -Password $password -AccountNeverExpires -PasswordNeverExpires
+        }
+        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
         Write-Host "User Gamer created."
 
     # -------------------------------------------------------
-    # 2. Enable RDP
+    # 2. Enable RDP & Firewall
     # -------------------------------------------------------
     - name: Enable RDP
       shell: powershell
       run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" -Value 0 -Force
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Restart-Service TermService -Force
         Write-Host "RDP enabled."
 
     # -------------------------------------------------------
-    # 3. Install GPU & Gaming Packages (SAFE)
+    # 3. Install GPU Support / VC++ Runtime / DirectX
     # -------------------------------------------------------
     - name: Install GPU Support
       shell: powershell
       run: |
         Write-Host "Installing gaming components..."
+
+        # Install Visual C++ Redistributable
         winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
-        winget install --id=DirectX -e --accept-source-agreements --accept-package-agreements
+
+        # Install DirectX (June 2010 redistributable) silently
+        $dxUrl = "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-8F3B-0D4C0F8D7753/directx_Jun2010_redist.exe"
+        Invoke-WebRequest $dxUrl -OutFile dx.exe
+        Start-Process dx.exe -ArgumentList "/Q" -Wait
+
         Write-Host "GPU base components installed."
 
     # -------------------------------------------------------
@@ -48,7 +60,6 @@ jobs:
       shell: powershell
       run: |
         Write-Host "Downloading Ryujinx..."
-
         mkdir C:\Ryujinx -Force
 
         $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
@@ -60,20 +71,32 @@ jobs:
         mkdir C:\Switch\keys -Force
         mkdir C:\Switch\games -Force
 
-        Write-Host "Upload prod.keys + title.keys → C:\Switch\keys"
-        Write-Host "Upload NSP/XCI games → C:\Switch\games"
+        Write-Host "Upload prod.keys + title.keys → C:\\Switch\\keys"
+        Write-Host "Upload NSP/XCI games → C:\\Switch\\games"
 
     # -------------------------------------------------------
-    # 5. Display RDP IP + Login Info
+    # 5. Show Connection + Credentials Info
     # -------------------------------------------------------
     - name: Show Connection Info
       shell: powershell
       run: |
-        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
-        Write-Host "==========================="
-        Write-Host "      RDP IS READY"
-        Write-Host "==========================="
-        Write-Host "IP Address: $ip"
+        Write-Host "=============================="
+        Write-Host "         RDP READY"
+        Write-Host "=============================="
         Write-Host "Username : Gamer"
         Write-Host "Password : Hamid@12345"
-        Write-Host "Connect via: mstsc.exe"
+        Write-Host "Ryujinx Path: C:\\Ryujinx"
+        Write-Host "Games Folder: C:\\Switch\\games"
+        Write-Host "Keys Folder : C:\\Switch\\keys"
+        Write-Host "=============================="
+
+    # -------------------------------------------------------
+    # 6. Keep RDP Session Alive (so emulator stays running)
+    # -------------------------------------------------------
+    - name: Keep Session Alive
+      shell: powershell
+      run: |
+        while ($true) {
+          Write-Host "RDP session alive..."
+          Start-Sleep -Seconds 300
+        }
