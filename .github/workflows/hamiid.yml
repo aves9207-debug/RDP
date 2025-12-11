@@ -1,4 +1,4 @@
-name: Gaming RDP + Ryujinx
+name: Gaming RDP + Ryujinx (Final)
 on:
   workflow_dispatch:
 
@@ -9,15 +9,14 @@ jobs:
 
     steps:
     # ----------------------------------------------------------
-    # PERFORMANCE TWEAKS (NO ERRORS)
+    # PERFORMANCE MODE (NO ERRORS)
     # ----------------------------------------------------------
     - name: Performance Tweaks
       shell: powershell
       run: |
-        # Apply Ultimate Performance safely
-        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 | Out-Null
+        # Activate Ultimate Performance (this is safe)
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        Write-Host "Ultimate Performance Enabled Successfully."
+        Write-Host "Ultimate Performance Mode Activated (Safe, No Errors)."
 
     # ----------------------------------------------------------
     # ENABLE RDP
@@ -76,3 +75,34 @@ jobs:
         Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
 
         mkdir C:\Switch -Force
+        mkdir C:\Switch\keys -Force
+        mkdir C:\Switch\games -Force
+
+        Write-Host "Upload prod.keys + title.keys -> C:\\Switch\\keys"
+        Write-Host "Upload your game NSP/XCI -> C:\\Switch\\games"
+
+    # ----------------------------------------------------------
+    # SHOW INFO (FOR YOU)
+    # ----------------------------------------------------------
+    - name: Show Info
+      shell: powershell
+      run: |
+        Write-Host "==========================="
+        Write-Host "Tailscale IP: $env:TSIP"
+        Write-Host "RDP User: Gamer"
+        Write-Host "RDP Pass: $env:PASS"
+        Write-Host "Ryujinx Path: C:\\Ryujinx"
+        Write-Host "Games Folder: C:\\Switch\\games"
+        Write-Host "Keys Folder: C:\\Switch\\keys"
+        Write-Host "==========================="
+
+    # ----------------------------------------------------------
+    # KEEP SESSION ALIVE
+    # ----------------------------------------------------------
+    - name: Keep Alive
+      shell: powershell
+      run: |
+        while ($true) {
+          Write-Host "RDP Running..."
+          Start-Sleep -Seconds 300
+        }
