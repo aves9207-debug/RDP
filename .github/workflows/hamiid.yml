@@ -8,29 +8,31 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    # -----------------------------
-    # PERFORMANCE BOOST
-    # -----------------------------
+    # ----------------------------------------------------------
+    # PERFORMANCE TWEAKS (NO ERRORS)
+    # ----------------------------------------------------------
     - name: Performance Tweaks
       shell: powershell
       run: |
-        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+        # Apply Ultimate Performance safely
+        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 | Out-Null
         powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+        Write-Host "Ultimate Performance Enabled Successfully."
 
-    # -----------------------------
+    # ----------------------------------------------------------
     # ENABLE RDP
-    # -----------------------------
+    # ----------------------------------------------------------
     - name: Enable RDP
       shell: powershell
       run: |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-          -Name 'fDenyTSConnections' -Value 0 -Force
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" -Value 0 -Force
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
 
-    # -----------------------------
-    # CREATE USER
-    # -----------------------------
+    # ----------------------------------------------------------
+    # CREATE RDP USER
+    # ----------------------------------------------------------
     - name: Create RDP User
       shell: powershell
       run: |
@@ -46,11 +48,31 @@ jobs:
 
         echo "PASS=$password" >> $env:GITHUB_ENV
 
-    # -----------------------------
+    # ----------------------------------------------------------
     # INSTALL TAILSCALE
-    # -----------------------------
+    # ----------------------------------------------------------
     - name: Install Tailscale
       shell: powershell
       run: |
         Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-        Start-Process msiexec.exe -ArgumentList
+        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
+
+    - name: Connect Tailscale
+      shell: powershell
+      run: |
+        $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+        & $ts up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname "Ryujinx-RDP"
+        $ip = & $ts ip -4
+        echo "TSIP=$ip" >> $env:GITHUB_ENV
+
+    # ----------------------------------------------------------
+    # INSTALL RYUJINX EMULATOR
+    # ----------------------------------------------------------
+    - name: Install Ryujinx
+      shell: powershell
+      run: |
+        mkdir C:\Ryujinx -Force
+        Invoke-WebRequest "https://github.com/Ryujinx/release-channel-master/releases/latest/download/ryujinx-win_x64.zip" -OutFile "ryujinx.zip"
+        Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
+
+        mkdir C:\Switch -Force
