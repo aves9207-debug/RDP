@@ -9,9 +9,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    # -------------------------------------------------------
-    # 1. Create RDP User
-    # -------------------------------------------------------
     - name: Create RDP User
       shell: powershell
       run: |
@@ -19,33 +16,48 @@ jobs:
         if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
           New-LocalUser -Name "Gamer" -Password $password -AccountNeverExpires -PasswordNeverExpires
         }
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
-        Write-Host "User Gamer created."
+        try { Add-LocalGroupMember -Group "Administrators" -Member "Gamer" } catch {}
+        try { Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" } catch {}
+        Write-Host "User Gamer created or already exists."
 
-    # -------------------------------------------------------
-    # 2. Enable RDP
-    # -------------------------------------------------------
     - name: Enable RDP
       shell: powershell
       run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
-          -Name "fDenyTSConnections" -Value 0 -Force
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
         Write-Host "RDP enabled."
 
-    # -------------------------------------------------------
-    # 3. Install VC++ Runtime ONLY (skip DirectX)
-    # -------------------------------------------------------
     - name: Install VC++ Redistributable
       shell: powershell
       run: |
-        Write-Host "Installing VC++ redistributable only..."
+        Write-Host "Installing VC++ runtime..."
         winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
         Write-Host "VC++ runtime installed."
 
-    # -------------------------------------------------------
-    # 4. Install Ryujinx Emulator
-    # -------------------------------------------------------
-    - name: Install Ryuj
+    - name: Install Ryujinx Emulator
+      shell: powershell
+      run: |
+        Write-Host "Downloading Ryujinx..."
+        New-Item -ItemType Directory -Force -Path "C:\Ryujinx" | Out-Null
+        $url = "https://github.com/Ryujinx/release-channel-master/releases/latest/download/Ryujinx-win_x64.zip"
+        Invoke-WebRequest $url -OutFile "ryujinx.zip"
+        Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
+        New-Item -ItemType Directory -Force -Path "C:\Switch\keys" | Out-Null
+        New-Item -ItemType Directory -Force -Path "C:\Switch\games" | Out-Null
+        Write-Host "Ryujinx installed and folders created."
+
+    - name: Show Connection Info
+      shell: powershell
+      run: |
+        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
+        Write-Host "==========================="
+        Write-Host "       RDP IS READY"
+        Write-Host "==========================="
+        Write-Host "Public IP   : $ip"
+        Write-Host "Username    : Gamer"
+        Write-Host "Password    : Hamid@12345"
+        Write-Host "Ryujinx     : C:\Ryujinx"
+        Write-Host "Keys Folder : C:\Switch\keys"
+        Write-Host "Games Folder: C:\Switch\games"
+        Write-Host "Connect via mstsc.exe"
