@@ -1,5 +1,4 @@
-name: Gaming RDP (Final Fixed)
-
+name: Gaming RDP
 on:
   workflow_dispatch:
 
@@ -9,85 +8,63 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    # ----------------------------------------------------
-    # 1. Enable RDP
-    # ----------------------------------------------------
+    - name: Performance Tweaks
+      shell: powershell
+      run: |
+        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+        powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+        reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 90,12,07,80,10,00,00,00 /f
+
     - name: Enable RDP
       shell: powershell
       run: |
-        Write-Host "Enabling RDP..."
-        Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-          -Name fDenyTSConnections -Value 0 -Force
-        Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
-        Write-Host "RDP enabled"
 
-    # ----------------------------------------------------
-    # 2. Create RDP User (SAFE)
-    # ----------------------------------------------------
     - name: Create RDP User
       shell: powershell
+      continue-on-error: true
       run: |
-        Write-Host "Creating RDP user..."
+        $password = "Hamid@12345"
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-        $SecurePass = ConvertTo-SecureString 'Hamid@12345' -AsPlainText -Force
-
-        $User = Get-LocalUser -Name 'Gamer' -ErrorAction SilentlyContinue
-        if ($null -eq $User) {
-          New-LocalUser -Name 'Gamer' `
-            -Password $SecurePass `
-            -AccountNeverExpires `
-            -PasswordNeverExpires
+        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
         }
 
-        Add-LocalGroupMember -Group 'Administrators' -Member 'Gamer' -ErrorAction SilentlyContinue
-        Add-LocalGroupMember -Group 'Remote Desktop Users' -Member 'Gamer' -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
 
-        Write-Host "User Gamer ready"
+        echo "PASS=$password" >> $env:GITHUB_ENV
 
-    # ----------------------------------------------------
-    # 3. Install VC++ Runtime (NON-FATAL)
-    # ----------------------------------------------------
-    - name: Install VC++ Runtime
+    - name: Install Tailscale
       shell: powershell
       run: |
-        Write-Host "Installing VC++ Runtime..."
-        winget install Microsoft.VCRedist.2015+.x64 -e `
-          --accept-source-agreements --accept-package-agreements
-        Write-Host "VC++ install step finished"
+        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
+        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
 
-    # ----------------------------------------------------
-    # 4. Prepare Emulator Folders (NO DOWNLOADS)
-    # ----------------------------------------------------
-    - name: Prepare Emulator Folders
+    - name: Connect Tailscale
       shell: powershell
       run: |
-        New-Item -ItemType Directory -Force -Path C:\Emulators | Out-Null
-        New-Item -ItemType Directory -Force -Path C:\Switch\keys | Out-Null
-        New-Item -ItemType Directory -Force -Path C:\Switch\games | Out-Null
-        Write-Host "Folders created"
+        $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+        & $ts up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname "Gaming-RDP"
+        $ip = & $ts ip -4
+        echo "TSIP=$ip" >> $env:GITHUB_ENV
 
-    # ----------------------------------------------------
-    # 5. Show RDP Info (FIXED)
-    # ----------------------------------------------------
-    - name: Show RDP Info
+    - name: Show Info
       shell: powershell
       run: |
-        $ip = Invoke-RestMethod https://api.ipify.org
-        Write-Host "=============================="
-        Write-Host "RDP READY"
-        Write-Host "IP   : $ip"
-        Write-Host "USER : Gamer"
-        Write-Host "PASS : Hamid@12345"
-        Write-Host "=============================="
+        Write-Host "===================="
+        Write-Host "Tailscale IP: $env:TSIP"
+        Write-Host "RDP User: Gamer"
+        Write-Host "RDP Pass: $env:PASS"
+        Write-Host "===================="
 
-    # ----------------------------------------------------
-    # 6. Keep RDP Alive
-    # ----------------------------------------------------
-    - name: Keep RDP Alive
+    - name: Keep Alive
       shell: powershell
       run: |
         while ($true) {
-          Write-Host "RDP running..."
-          Start-Sleep 300
+          Write-Host "RDP Running..."
+          Start-Sleep -Seconds 300
         }
