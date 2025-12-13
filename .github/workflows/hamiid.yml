@@ -1,4 +1,4 @@
-name: Gaming RDP (Stable Final)
+name: Gaming RDP (Final Fixed)
 
 on:
   workflow_dispatch:
@@ -9,41 +9,85 @@ jobs:
     timeout-minutes: 360
 
     steps:
+    # ----------------------------------------------------
+    # 1. Enable RDP
+    # ----------------------------------------------------
     - name: Enable RDP
       shell: powershell
       run: |
+        Write-Host "Enabling RDP..."
         Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
           -Name fDenyTSConnections -Value 0 -Force
         Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
         Restart-Service TermService -Force
+        Write-Host "RDP enabled"
 
+    # ----------------------------------------------------
+    # 2. Create RDP User (SAFE)
+    # ----------------------------------------------------
     - name: Create RDP User
       shell: powershell
       run: |
-        $pass = ConvertTo-SecureString 'Hamid@12345' -AsPlainText -Force
-        if (-not (Get-LocalUser Gamer -ErrorAction SilentlyContinue)) {
-          New-LocalUser Gamer -Password $pass -PasswordNeverExpires
-        }
-        Add-LocalGroupMember Administrators Gamer -ErrorAction SilentlyContinue
-        Add-LocalGroupMember 'Remote Desktop Users' Gamer -ErrorAction SilentlyContinue
+        Write-Host "Creating RDP user..."
 
+        $SecurePass = ConvertTo-SecureString 'Hamid@12345' -AsPlainText -Force
+
+        $User = Get-LocalUser -Name 'Gamer' -ErrorAction SilentlyContinue
+        if ($null -eq $User) {
+          New-LocalUser -Name 'Gamer' `
+            -Password $SecurePass `
+            -AccountNeverExpires `
+            -PasswordNeverExpires
+        }
+
+        Add-LocalGroupMember -Group 'Administrators' -Member 'Gamer' -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group 'Remote Desktop Users' -Member 'Gamer' -ErrorAction SilentlyContinue
+
+        Write-Host "User Gamer ready"
+
+    # ----------------------------------------------------
+    # 3. Install VC++ Runtime (NON-FATAL)
+    # ----------------------------------------------------
     - name: Install VC++ Runtime
       shell: powershell
       run: |
+        Write-Host "Installing VC++ Runtime..."
         winget install Microsoft.VCRedist.2015+.x64 -e `
           --accept-source-agreements --accept-package-agreements
+        Write-Host "VC++ install step finished"
 
+    # ----------------------------------------------------
+    # 4. Prepare Emulator Folders (NO DOWNLOADS)
+    # ----------------------------------------------------
     - name: Prepare Emulator Folders
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path C:\Emulators | Out-Null
         New-Item -ItemType Directory -Force -Path C:\Switch\keys | Out-Null
         New-Item -ItemType Directory -Force -Path C:\Switch\games | Out-Null
+        Write-Host "Folders created"
 
+    # ----------------------------------------------------
+    # 5. Show RDP Info (FIXED)
+    # ----------------------------------------------------
     - name: Show RDP Info
       shell: powershell
       run: |
         $ip = Invoke-RestMethod https://api.ipify.org
         Write-Host "=============================="
         Write-Host "RDP READY"
-        Write
+        Write-Host "IP   : $ip"
+        Write-Host "USER : Gamer"
+        Write-Host "PASS : Hamid@12345"
+        Write-Host "=============================="
+
+    # ----------------------------------------------------
+    # 6. Keep RDP Alive
+    # ----------------------------------------------------
+    - name: Keep RDP Alive
+      shell: powershell
+      run: |
+        while ($true) {
+          Write-Host "RDP running..."
+          Start-Sleep 300
+        }
