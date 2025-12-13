@@ -1,70 +1,107 @@
-name: Gaming RDP
+name: RDP
+
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-rdp:
+  rdp-job:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-    - name: Performance Tweaks
-      shell: powershell
-      run: |
-        powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
-        powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
-        reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 90,12,07,80,10,00,00,00 /f
-
+    # ---------------------------------
+    # 1️⃣ Enable RDP
+    # ---------------------------------
     - name: Enable RDP
       shell: powershell
       run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
+        Set-ItemProperty `
+          -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+          -Name fDenyTSConnections -Value 0
+
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Restart-Service TermService -Force
 
+    # ---------------------------------
+    # 2️⃣ Create RDP User with fixed password
+    # ---------------------------------
     - name: Create RDP User
       shell: powershell
-      continue-on-error: true
       run: |
-        $password = "Hamid@12345"
+        $username = "RDP"
+        $password = "hamid@12345"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
-            New-LocalUser -Name "Gamer" -Password $securePass -AccountNeverExpires
+        if (-not (Get-LocalUser -Name $username -ErrorAction SilentlyContinue)) {
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+        } else {
+          Set-LocalUser -Name $username -Password $securePass
         }
 
-        Add-LocalGroupMember -Group "Administrators" -Member "Gamer" -ErrorAction SilentlyContinue
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group Administrators -Member $username -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username -ErrorAction SilentlyContinue
 
-        echo "PASS=$password" >> $env:GITHUB_ENV
+        echo "RDP_USER=$username" >> $env:GITHUB_ENV
+        echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
+    # ---------------------------------
+    # 3️⃣ Install Tailscale
+    # ---------------------------------
     - name: Install Tailscale
       shell: powershell
       run: |
-        Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
+        $msi = "$env:TEMP\tailscale.msi"
+        Invoke-WebRequest `
+          https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi `
+          -OutFile $msi
 
+        Start-Process msiexec.exe `
+          -ArgumentList "/i `"$msi`" /quiet /norestart" `
+          -Wait
+
+        Start-Service Tailscale
+        Start-Sleep 5
+
+    # ---------------------------------
+    # 4️⃣ Connect Tailscale
+    # ---------------------------------
     - name: Connect Tailscale
       shell: powershell
+      env:
+        TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
       run: |
-        $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
-        & $ts up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname "Gaming-RDP"
-        $ip = & $ts ip -4
-        echo "TSIP=$ip" >> $env:GITHUB_ENV
+        & "C:\Program Files\Tailscale\tailscale.exe" up `
+          --authkey $env:TS_AUTHKEY `
+          --hostname gh-rdp `
+          --accept-dns=false `
+          --accept-routes=false
 
-    - name: Show Info
+        Start-Sleep 3
+        $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+        echo "TS_IP=$ip" >> $env:GITHUB_ENV
+
+    # ---------------------------------
+    # 5️⃣ Show Connection Info
+    # ---------------------------------
+    - name: Show Connection Info
       shell: powershell
       run: |
-        Write-Host "===================="
-        Write-Host "Tailscale IP: $env:TSIP"
-        Write-Host "RDP User: Gamer"
-        Write-Host "RDP Pass: $env:PASS"
-        Write-Host "===================="
+        Write-Host ""
+        Write-Host "=============================="
+        Write-Host "✅ RDP READY"
+        Write-Host "Tailscale IP : $env:TS_IP"
+        Write-Host "Username     : $env:RDP_USER"
+        Write-Host "Password     : $env:RDP_PASS"
+        Write-Host "=============================="
+        Write-Host ""
 
+    # ---------------------------------
+    # 6️⃣ Keep Alive (Prevent workflow from exiting)
+    # ---------------------------------
     - name: Keep Alive
       shell: powershell
       run: |
         while ($true) {
-          Write-Host "RDP Running..."
-          Start-Sleep -Seconds 300
+          Write-Host "[$(Get-Date -Format T)] RDP Running..."
+          Start-Sleep 300
         }
