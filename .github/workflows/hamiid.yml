@@ -1,15 +1,31 @@
-    - name: Install Ryujinx (Stable – No 404)
+name: Gaming RDP (Stable)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gaming-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+    # ----------------------------------------------------
+    # 1. Enable RDP
+    # ----------------------------------------------------
+    - name: Enable RDP
       shell: powershell
       run: |
-        Write-Host "Installing Chocolatey..."
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" -Value 0 -Force
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Restart-Service TermService -Force
+        Write-Host "RDP enabled"
 
-        Write-Host "Installing Ryujinx via Chocolatey..."
-        choco install ryujinx -y --no-progress
-
-        New-Item -ItemType Directory -Force -Path "C:\Switch\keys" | Out-Null
-        New-Item -ItemType Directory -Force -Path "C:\Switch\games" | Out-Null
-
-        Write-Host "Ryujinx installed successfully."
+    # ----------------------------------------------------
+    # 2. Create RDP User (Safe)
+    # ----------------------------------------------------
+    - name: Create RDP User
+      shell: powershell
+      run: |
+        $pass = ConvertTo-SecureString "Hamid@12345" -AsPlainText -Force
+        if (-n
