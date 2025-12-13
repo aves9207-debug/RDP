@@ -1,69 +1,15 @@
-name: Gaming RDP
-
-on:
-  workflow_dispatch:
-
-jobs:
-  gaming-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 360
-
-    steps:
-    - name: Create RDP User
+    - name: Install Ryujinx (Stable – No 404)
       shell: powershell
       run: |
-        $password = ConvertTo-SecureString "Hamid@12345" -AsPlainText -Force
-        if (-not (Get-LocalUser -Name "Gamer" -ErrorAction SilentlyContinue)) {
-          New-LocalUser -Name "Gamer" -Password $password -AccountNeverExpires -PasswordNeverExpires
-        }
-        try { Add-LocalGroupMember -Group "Administrators" -Member "Gamer" } catch {}
-        try { Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Gamer" } catch {}
-        Write-Host "User Gamer created or already exists."
+        Write-Host "Installing Chocolatey..."
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
-    - name: Enable RDP
-      shell: powershell
-      run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Restart-Service TermService -Force
-        Write-Host "RDP enabled."
+        Write-Host "Installing Ryujinx via Chocolatey..."
+        choco install ryujinx -y --no-progress
 
-    - name: Install VC++ Redistributable
-      shell: powershell
-      run: |
-        Write-Host "Installing VC++ runtime..."
-        winget install --id=Microsoft.VCRedist.2015+.x64 -e --accept-source-agreements --accept-package-agreements
-        Write-Host "VC++ runtime installed."
-
-    - name: Install Ryujinx Emulator
-      shell: powershell
-      run: |
-        Write-Host "Fetching latest Ryujinx release URL..."
-        $apiUrl = "https://api.github.com/repos/Ryujinx/release-channel-master/releases/latest"
-        $response = Invoke-RestMethod -Uri $apiUrl -Headers @{ 'User-Agent' = 'request' }
-        $asset = $response.assets | Where-Object { $_.name -like "Ryujinx-win_x64.zip" }
-        $downloadUrl = $asset.browser_download_url
-        Write-Host "Downloading Ryujinx from $downloadUrl"
-        
-        New-Item -ItemType Directory -Force -Path "C:\Ryujinx" | Out-Null
-        Invoke-WebRequest -Uri $downloadUrl -OutFile "ryujinx.zip"
-        Expand-Archive ryujinx.zip -DestinationPath C:\Ryujinx -Force
-        
         New-Item -ItemType Directory -Force -Path "C:\Switch\keys" | Out-Null
         New-Item -ItemType Directory -Force -Path "C:\Switch\games" | Out-Null
-        Write-Host "Ryujinx installed and folders created."
 
-    - name: Show Connection Info
-      shell: powershell
-      run: |
-        $ip = (Invoke-RestMethod "https://api.ipify.org/?format=json").ip
-        Write-Host "==========================="
-        Write-Host "       RDP IS READY"
-        Write-Host "==========================="
-        Write-Host "Public IP   : $ip"
-        Write-Host "Username    : Gamer"
-        Write-Host "Password    : Hamid@12345"
-        Write-Host "Ryujinx     : C:\Ryujinx"
-        Write-Host "Keys Folder : C:\Switch\keys"
-        Write-Host "Games Folder: C:\Switch\games"
-        Write-Host "Connect via mstsc.exe"
+        Write-Host "Ryujinx installed successfully."
